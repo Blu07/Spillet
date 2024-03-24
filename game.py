@@ -43,6 +43,11 @@ class PlayerSprite(pygame.sprite.Sprite):
     def draw(self, surface):
         surface.blit(self.image, self.rect)  # Blit the sprite onto the surface
 
+class Boundary:
+    def __init__(self) -> None:
+        self.rect = pygame.rect(20, 30)
+
+
 
 scene = Scene(screen)
 
