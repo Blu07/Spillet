@@ -1,8 +1,13 @@
 from keyboard import *
-import random as rnd, time, math, pygame, os
+import random as rnd
+import time
+import math
+import pygame
+import os
+import numpy as np
 
 pygame.init()
-screen = pygame.display.set_mode((1280, 720))
+screen = pygame.display.set_mode((800, 600))
 clock = pygame.time.Clock()
 running = True
 dt = 0
@@ -15,11 +20,13 @@ class Scene:
         self.gameboard = surface
         self.interrupted = False
         self.playerSprite = PlayerSprite()
+       
 
     def render(self):
         if not self.interrupted:
-            self.playerSprite.update()  # Call update method directly
-            self.playerSprite.draw(self.gameboard)  # Draw the player sprite on the gameboard
+            self.playerSprite.update(self.gameboard)  # Call update method directly
+            # Draw the player sprite on the gameboard
+            self.playerSprite.draw(self.gameboard)
 
 
 class PlayerSprite(pygame.sprite.Sprite):
@@ -28,25 +35,109 @@ class PlayerSprite(pygame.sprite.Sprite):
         self.image = pygame.image.load(os.path.join("sprites", "player1.png"))
         self.rect = self.image.get_rect(center=playerPos)  # Set the initial position
 
-    def update(self):
-        # Update the position based on user input
-        keys = pygame.key.get_pressed()
-        if keys[pygame.K_w]:
-            self.rect.y -= 300 * dt
-        if keys[pygame.K_s]:
-            self.rect.y += 300 * dt
-        if keys[pygame.K_a]:
-            self.rect.x -= 300 * dt
-        if keys[pygame.K_d]:
-            self.rect.x += 300 * dt
+        # Initialize speed vectors and vectors affecting speed
+        self.speedVector = np.zeros(2)
+        self.weight = 10
+        self.moveResistance = 10.3
+        # Initialize PID controller variables
+        self.prev_error = np.zeros(2)
+        self.integral = np.zeros(2)
+
+
+    def update(self, surface):
+        """
+        Update the position based on speed vector
+        """
+        if pygame.mouse.get_pressed()[0]:
+            self.updateSpeedVectorPID(surface)
+        else:
+            if hasattr(self, 'threadInitialLength'):
+                delattr(self, 'threadInitialLength')
+
+        self.speedVector *=  self.weight/self.moveResistance
+
+        # Update player position based on speed vector
+        self.rect.x += self.speedVector[0]
+        self.rect.y += self.speedVector[1]
+
+
+        
+
+
+        # # Get Boolean value for which keys are pressed for movement
+        # keys = pygame.key.get_pressed()
+        # up = keys[pygame.K_w] or keys[pygame.K_i] or keys[pygame.K_UP] or keys[pygame.K_KP_8]
+        # down = keys[pygame.K_s] or keys[pygame.K_k] or keys[pygame.K_DOWN] or keys[pygame.K_KP_5] or keys[pygame.K_KP_2]
+        # left = keys[pygame.K_a] or keys[pygame.K_j] or keys[pygame.K_LEFT] or keys[pygame.K_KP_4]
+        # right = keys[pygame.K_d] or keys[pygame.K_l] or keys[pygame.K_RIGHT] or keys[pygame.K_KP_6]
+
+        # # Change values based directly on keys pressed. Pro: Opposites cancel out.
+        # if up:
+        #     change_y -= 1
+        # if down:
+        #     change_y += 1
+        # if right:
+        #     change_x += 1
+        # if left:
+        #     change_x -= 1
+        
+        # # Account for vertical movement
+        # # Player moves diagonally if both horizontal and vertical vectors have values.
+        # if change_x and change_y:
+        #     change_x /= math.sqrt(2)
+        #     change_y /= math.sqrt(2)
+
+        # # Apply changes
+        # self.rect.x += speed * change_x * dt
+        # self.rect.y += speed * change_y * dt
+
+    def updateSpeedVectorPID(self, surface):
+        
+        global dt
+        tension = 1.1
+        Kp = 0.001
+        Ki = 0.01
+        Kd = 0.01
+
+
+
+        mousePos = pygame.mouse.get_pos()
+        playerPos = (self.rect.x, self.rect.y)
+
+        mouseVec = np.array(mousePos)
+        playerVec = np.array(playerPos)
+
+        threadVec = playerVec - mouseVec
+        threadLen = np.linalg.norm(threadVec)
+
+
+        if not hasattr(self, 'threadInitialLength'):
+            self.threadInitialLength = np.linalg.norm(threadVec)
+
+        directionVec = threadVec / threadLen
+        self.targetPlayerPos = mouseVec + (directionVec * self.threadInitialLength)
+        
+        self.drawThread(surface, mousePos, playerPos, int(threadLen/self.threadInitialLength))
+
+        if not threadLen < self.threadInitialLength:
+            # Move towards the target point with PID control
+            error = np.array(self.targetPlayerPos) - playerVec
+            self.integral += error
+            derivative = (error - self.prev_error) / dt
+            output = Kp * error + Ki * self.integral + Kd * derivative
+            self.prev_error = error
+
+            self.speedVector = output
+        
+    
+            
 
     def draw(self, surface):
         surface.blit(self.image, self.rect)  # Blit the sprite onto the surface
+        
 
-class Boundary:
-    def __init__(self) -> None:
-        self.rect = pygame.rect(20, 30)
-
+    def drawThread(self, surface, start, end, stretch):
+        pygame.draw.line(surface, (255, 0, 0), start, end, stretch*3)
 
 
 scene = Scene(screen)
@@ -59,6 +150,7 @@ while running:
     screen.fill("#4b7382")
 
     scene.render()
+   
 
     screen.blit(scene.gameboard, (0, 0))
 
@@ -68,7 +160,6 @@ while running:
     dt = clock.tick(60) / 1000
 
 pygame.quit()
-
 
 
 '''from keyboard import *
@@ -158,4 +249,3 @@ while running:
 
 pygame.quit()
 '''
-
